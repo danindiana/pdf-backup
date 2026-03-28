@@ -58,7 +58,9 @@ sudo ./verify.sh --spot-check 500   # MD5 check 500 random files
 |--------|---------|
 | `pdf-backup.sh` | Main runner. Idempotent — safe to kill and re-run. |
 | `stop.sh` | Graceful SIGTERM to rsync. Partial files preserved for resume. |
+| `sdc1-backup.sh` | Secondary backup — replicates sdc1 `files/files/` (1.46M PDFs, 4.2T) to `$DEST/sdc1_files/`. Run after primary completes. |
 | `watch-backup.sh` | **Live monitor** — progress bar, ETA, throughput, kernel I/O stats. Run in a second terminal. No root required. |
+| `thermal-watch.sh` | Polls SMART temps on sda/sdc/sdg every N seconds. Logs WARNING ≥47°C, CRITICAL ≥50°C. Log: `/var/log/pdf-backup/thermal.log` |
 | `status.sh` | Snapshot: process state, disk usage, file count, recent log lines. |
 | `verify.sh` | Post-run verification. Counts files/bytes; optional MD5 spot-check. |
 | `config.env` | All tunable parameters (source, dest, max size, log path). |
@@ -135,6 +137,37 @@ done
 - **Kernel note:** Running 6.8.12 (custom, `CONFIG_XFS_FS` not set). ext4 used.
   Stock Ubuntu kernels (6.8.0-106-generic) have XFS available if needed.
 
+## systemd timer
+
+Weekly automatic re-sync — every Sunday at 02:00 (±10min jitter):
+
+```bash
+sudo systemctl status pdf-backup.timer    # check next trigger
+sudo systemctl list-timers pdf-backup     # same
+sudo systemctl start pdf-backup.service   # run manually now
+```
+
+Units at `/etc/systemd/system/pdf-backup.{service,timer}`.
+`Persistent=true` means if the machine was off on Sunday, it runs at next boot.
+
+## Thermal monitoring
+
+`thermal-watch.sh` polls SMART attr 194 (Temperature_Celsius) on sda/sdc/sdg:
+- **WARNING** logged at ≥47°C
+- **CRITICAL** logged at ≥50°C
+- Log: `/var/log/pdf-backup/thermal.log`
+
+```bash
+# start in background
+sudo ./thermal-watch.sh 60 &     # poll every 60s
+
+# watch live
+tail -f /var/log/pdf-backup/thermal.log
+```
+
+**Current status (2026-03-27):** both RAID IronWolfs (sdc + sdg) running at **48°C** during
+active rsync transfer — in WARNING zone. Physical airflow check of chassis recommended.
+
 ## Supporting infrastructure
 
 ### logrotate
@@ -177,7 +210,9 @@ the second archive. Consider eventually merging `files/files/` into the main RAI
 - [ ] Monitor initial transfer to completion; run `verify.sh` when done
 - [ ] Set up systemd timer for periodic re-sync as new PDFs land on RAID0
 - [ ] Acquire 6TB+ drive — needed for both excluded large files (>10M) AND sdc1 `files/files/` backup
-- [ ] **Urgent:** Investigate sdg thermals — airflow, drive placement, possible replacement
+- [ ] **Urgent:** Physical chassis airflow check — both IronWolfs at 48°C under load
+- [ ] Run `sdc1-backup.sh` after primary transfer completes (space permitting)
 - [ ] Consider RAID0 → redundant array — zero fault tolerance on 4.7T archive
-- [ ] Consider merging sdc1 `files/files/` (1.46M PDFs, 4.2T) into RAID0 monolithic archive
+- [ ] Consider merging sdc1 `files/files/` into RAID0 monolithic archive
 - [ ] Decide fate of Telegram downloads on sdc1 (12G, 458 videos, 264 PDFs)
+- [ ] 6TB+ drive for large file overflow and full sdc1 archive backup
