@@ -165,8 +165,17 @@ sudo ./thermal-watch.sh 60 &     # poll every 60s
 tail -f /var/log/pdf-backup/thermal.log
 ```
 
-**Current status (2026-03-27):** both RAID IronWolfs (sdc + sdg) running at **48°C** during
-active rsync transfer — in WARNING zone. Physical airflow check of chassis recommended.
+**Thermal event 2026-03-27:** both IronWolfs hit 48°C during active transfer (WARNING zone).
+Chassis opened, auxiliary fan directed at drive bays. Result within ~15 minutes:
+
+| Drive | Before | After | Drop |
+|-------|--------|-------|------|
+| sdc (IronWolf ZL2PLEG9) | 48°C | 41°C | -7°C |
+| sdg (IronWolf ZLW2HXSN) | 48°C | 38°C | -10°C |
+| sda (WD backup dest) | 46°C | 41°C | -5°C |
+
+**Drives are now in the green.** Chassis fans are insufficient for sustained RAID load —
+auxiliary fan or improved drive bay airflow is strongly recommended as a permanent fix.
 
 ## Supporting infrastructure
 
@@ -210,7 +219,8 @@ the second archive. Consider eventually merging `files/files/` into the main RAI
 - [ ] Monitor initial transfer to completion; run `verify.sh` when done
 - [ ] Set up systemd timer for periodic re-sync as new PDFs land on RAID0
 - [ ] Acquire 6TB+ drive — needed for both excluded large files (>10M) AND sdc1 `files/files/` backup
-- [ ] **Urgent:** Physical chassis airflow check — both IronWolfs at 48°C under load
+- [x] ~~Chassis airflow~~ — **resolved 2026-03-27**: auxiliary fan dropped sdg to 38°C, sdc to 41°C
+- [ ] Make auxiliary fan permanent — chassis fans alone insufficient under sustained RAID load
 - [ ] Run `sdc1-backup.sh` after primary transfer completes — dry run passed (exit 0), 4.53T total scope, under-10M subset should fit in remaining ~0.7T headroom
 - [ ] Consider RAID0 → redundant array — zero fault tolerance on 4.7T archive
 - [ ] Consider merging sdc1 `files/files/` into RAID0 monolithic archive
