@@ -1,16 +1,25 @@
 # pdf-backup
 
-Suspend/resume rsync replication of the RAID0 PDF archive to a dedicated backup drive.
+Suspend/resume rsync replication of the RAID0 PDF archive to a dedicated backup drive,
+with live monitoring, ETA, and post-transfer verification.
 
 ## System
 
 | Role | Path | Device | Size |
 |------|------|--------|------|
-| Source | `/mnt/raid0/monolithic_pdf_folder` | `md0` (RAID0: sdc2+sdg2) | ~4.4T, ~2.4M PDFs |
-| Destination | `/mnt/pdf_backup` | `/dev/sda1` | 3.5T usable |
+| Source | `/mnt/raid0/monolithic_pdf_folder` | `md0` (RAID0: sdc2+sdg2) | 4.7T, ~2.5M files |
+| Destination | `/mnt/pdf_backup` | `/dev/sda1` (WDC WD4005FZBX) | 3.5T usable |
 
-Because the full archive (~4.4T) exceeds the destination (3.5T), files over `MAX_FILE_SIZE`
-(default `50M`) are excluded. Adjust this threshold in `config.env` to tune what fits.
+Because the full archive (4.7T) exceeds the destination (3.5T), files over `MAX_FILE_SIZE`
+are excluded. The threshold was determined by size-distribution analysis:
+
+| Max file size | Files | Size | Fits? |
+|--------------|-------|------|-------|
+| **10M** | **2,400,204** | **2.6 TiB** | **Yes — selected** |
+| 25M | 2,478,432 | 3.6 TiB | No |
+| 50M+ | 2.5M+ | 4.1–4.4 TiB | No |
+
+67.5% of all PDFs are under 1MB. The ~100K excluded files (>10M) are large scans/books.
 
 ## Quick start
 
@@ -21,21 +30,24 @@ nano config.env
 # 2. dry run first — see what would transfer, no writes
 sudo ./pdf-backup.sh --dry-run 2>&1 | tee dryrun.log
 
-# 3. start the real transfer (safe to run in background or tmux)
+# 3. start the real transfer (safe to run in tmux or leave terminal open)
 sudo ./pdf-backup.sh
 
-# 4. observe from another terminal
+# 4. monitor from a second terminal (live ETA + throughput + iostat)
+./watch-backup.sh          # refreshes every 10s
+./watch-backup.sh 5        # faster, every 5s
+
+# 5. or use the log-based status snapshot
 ./status.sh
-# or live tail:
 tail -f /var/log/pdf-backup/rsync.log
 
-# 5. stop safely (partial files kept, next run resumes)
+# 6. stop safely — partial files kept, next run resumes
 sudo ./stop.sh
 
-# 6. resume — just re-run pdf-backup.sh
+# 7. resume — just re-run
 sudo ./pdf-backup.sh
 
-# 7. verify after completion
+# 8. verify after completion
 sudo ./verify.sh
 sudo ./verify.sh --spot-check 500   # MD5 check 500 random files
 ```
@@ -46,30 +58,64 @@ sudo ./verify.sh --spot-check 500   # MD5 check 500 random files
 |--------|---------|
 | `pdf-backup.sh` | Main runner. Idempotent — safe to kill and re-run. |
 | `stop.sh` | Graceful SIGTERM to rsync. Partial files preserved for resume. |
+| `watch-backup.sh` | **Live monitor** — progress bar, ETA, throughput, kernel I/O stats. Run in a second terminal. No root required. |
 | `status.sh` | Snapshot: process state, disk usage, file count, recent log lines. |
 | `verify.sh` | Post-run verification. Counts files/bytes; optional MD5 spot-check. |
 | `config.env` | All tunable parameters (source, dest, max size, log path). |
 
+## watch-backup.sh
+
+Passive monitor that shows at a glance:
+- Progress bar vs expected 2.93T transfer total
+- PDF count accumulating at destination
+- Current write throughput and ETA (with avg-rate fallback)
+- 1-second kernel I/O sample for `sda` (dest) and `md0` (source RAID)
+- Elapsed runtime
+
+```
+╔══════════════════════════════════════════════════╗
+║           pdf-backup live monitor                ║
+╚══════════════════════════════════════════════════╝
+ Updated:    22:16:49  (every 10s)
+ rsync:      RUNNING (PID 43038)
+
+ ── Progress ────────────────────────────────────
+ Written:    22.22 GiB / 2.66 TiB  (0%)
+ [█░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░]
+ PDFs:       27491 files
+ Avail left: 3.20 TiB
+
+ ── Throughput ──────────────────────────────────
+ Current:    4.27 MiB/s
+ Runtime:    8m 12s
+ ETA:        9h 43m
+
+ ── I/O (kernel, 1s sample) ─────────────────────
+md0 (src):   read 2675.4 KB/s  write    0.0 KB/s
+sda (dest):  read 28921.1 KB/s  write 4362.7 KB/s
+```
+
 ## Resume behaviour
 
 rsync is invoked with:
-- `--partial` + `--partial-dir` — interrupted file chunks saved to `/mnt/pdf_backup/.rsync-partial/`
-- `--append-verify` — on resume, appends to the partial chunk then checksums the complete file
+- `--partial` — interrupted partial files kept in-place at destination
+- `--append-verify` — on resume, appends remaining bytes then checksums the whole file
 
-Killing the process (Ctrl-C, `./stop.sh`, reboot) is safe. Re-run `pdf-backup.sh` to continue.
+Killing the process (Ctrl-C, `./stop.sh`, reboot) is safe. Re-run `pdf-backup.sh` to continue
+exactly where it left off.
 
 ## Tuning the size filter
 
-The `MAX_FILE_SIZE` knob in `config.env` controls which PDFs are included:
+The `MAX_FILE_SIZE` knob in `config.env` controls which files are included.
+To re-evaluate thresholds:
 
 ```bash
-# estimate how much data falls under various thresholds:
-find /mnt/raid0/monolithic_pdf_folder -name "*.pdf" -size -10M  -printf "%s\n" | awk '{s+=$1} END {printf "Under 10M:  %.1f GB\n", s/1073741824}'
-find /mnt/raid0/monolithic_pdf_folder -name "*.pdf" -size -50M  -printf "%s\n" | awk '{s+=$1} END {printf "Under 50M:  %.1f GB\n", s/1073741824}'
-find /mnt/raid0/monolithic_pdf_folder -name "*.pdf" -size -100M -printf "%s\n" | awk '{s+=$1} END {printf "Under 100M: %.1f GB\n", s/1073741824}'
+for t in 10M 25M 50M 100M; do
+  c=$(sudo find /mnt/raid0/monolithic_pdf_folder -name "*.pdf" -size -${t} 2>/dev/null | wc -l)
+  b=$(sudo find /mnt/raid0/monolithic_pdf_folder -name "*.pdf" -size -${t} -printf "%s\n" 2>/dev/null | awk '{s+=$1} END {print s+0}')
+  printf "Under %5s: %7d files, %s\n" "$t" "$c" "$(numfmt --to=iec-i --suffix=B $b)"
+done
 ```
-
-Run these against the source before starting to pick a threshold that fits in 3.3T.
 
 ## Log location
 
@@ -78,17 +124,22 @@ Run these against the source before starting to pick a threshold that fits in 3.
 ## Host context
 
 - **Host:** worlock (192.168.1.135)
-- **Source RAID0:** `md0` — sdc2 + sdg2, 10.9T, 88% full, zero redundancy
+- **Source RAID0:** `md0` — sdc2 + sdg2, 10.9T total, 88% full, **zero redundancy**
 - **Dest drive:** WDC WD4005FZBX, serial VBGZSTNF, 4TB 7200rpm
-  - Reformatted 2026-03-27 from ext4 (WD_Storage) → ext4 tuned (`-i 4096`, ~977M inodes)
+  - SMART: PASSED, 0 reallocated sectors, 20,763 power-on hours at time of setup
+  - Reformatted 2026-03-27: wiped old ext4 (WD_Storage label), new GPT, single ext4 partition
+  - Format flags: `mkfs.ext4 -L pdf_backup -i 4096` (~977M inodes, tuned for millions of small files)
   - UUID: `674dd29f-6ba6-4f0f-80a8-58a0dded2c98`
   - fstab: `defaults,noatime,commit=60,nofail`
-- **Kernel note:** Running 6.8.12 (custom) — XFS disabled (`CONFIG_XFS_FS` not set).
-  ext4 used instead. If booting into a stock Ubuntu kernel (6.8.0-106-generic), XFS is available.
+  - Mount: `/mnt/pdf_backup`
+- **Kernel note:** Running 6.8.12 (custom, `CONFIG_XFS_FS` not set). ext4 used.
+  Stock Ubuntu kernels (6.8.0-106-generic) have XFS available if needed.
 
 ## Open items
 
-- [ ] Determine correct `MAX_FILE_SIZE` threshold (run size-distribution commands above)
-- [ ] First dry run to estimate transfer scope
-- [ ] Decide whether to acquire a larger drive (6TB+) to hold the full 4.4T archive
-- [ ] Consider periodic re-runs (cron/systemd timer) to sync newly ingested PDFs
+- [ ] Monitor initial transfer to completion; run `verify.sh` when done
+- [ ] Investigate `sdc1` (5.5T unmounted ext4) — potential home for excluded large files (>10M)
+- [ ] Set up systemd timer for periodic re-sync as new PDFs are ingested into RAID0
+- [ ] Consider larger drive (6TB+) to eventually capture the full 4.7T archive
+- [ ] Consider RAID0 → redundant array migration (RAID1/5) — archive has zero fault tolerance
+- [ ] Set up `smartd` alerts for sda and RAID member drives
