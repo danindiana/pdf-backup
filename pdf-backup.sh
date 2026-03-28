@@ -34,20 +34,17 @@ fi
 
 # --- setup ---
 mkdir -p "$(dirname "$LOG_FILE")"
-mkdir -p "$PARTIAL_DIR"
 
 # --- build rsync command ---
 RSYNC_FLAGS=(
     --archive           # preserve perms, timestamps, symlinks, owner, group
-    --partial           # keep partial files on interruption
-    --partial-dir="$PARTIAL_DIR"
-    --append-verify     # resume interrupted transfers; verify checksum after append
+    --partial           # keep partial files in-place on interruption (resume-safe)
+    --append-verify     # on resume: append remaining bytes, then checksum whole file
     --progress          # per-file progress
     --stats             # summary stats at end
     --human-readable
     --max-size="$MAX_FILE_SIZE"
     --exclude="*.tmp"
-    --exclude=".rsync-partial/"
 )
 
 if [[ $DRY_RUN -eq 1 ]]; then

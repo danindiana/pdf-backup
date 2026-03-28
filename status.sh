@@ -28,9 +28,6 @@ echo ""
 echo "=== Disk usage ==="
 df -h "$DEST" 2>/dev/null
 echo ""
-echo "  Partial chunks: $(du -sh "$PARTIAL_DIR" 2>/dev/null | cut -f1) in $PARTIAL_DIR"
-echo ""
-
 # --- file counts ---
 echo "=== File counts ==="
 DEST_COUNT=$(find "$DEST" -name "*.pdf" 2>/dev/null | wc -l)
