@@ -156,9 +156,10 @@ tightened — sdg is the most likely failure point on this array.
 
 ### sdc1
 5.5T ext4 on same physical disk as RAID member sdc2. Investigated 2026-03-27:
-- 4.4T used / 918G free, fsck clean
-- Contains ML models, media, CAD files, PDF crawl zips — not available for PDF overflow
-- Leave as-is until space is freed
+- 4.4T used / 918G free (83% full), fsck clean
+- `files/` (4.2T) is the dominant unknown; rest is ML models, LLM WebUI, media, CAD, text archives
+- Only 918G free — not viable for PDF overflow without clearing `files/`
+- Leave as-is; revisit if `files/` contents can be moved or deleted
 
 ## Open items
 
