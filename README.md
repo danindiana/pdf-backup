@@ -211,7 +211,7 @@ the second archive. Consider eventually merging `files/files/` into the main RAI
 - [ ] Set up systemd timer for periodic re-sync as new PDFs land on RAID0
 - [ ] Acquire 6TB+ drive — needed for both excluded large files (>10M) AND sdc1 `files/files/` backup
 - [ ] **Urgent:** Physical chassis airflow check — both IronWolfs at 48°C under load
-- [ ] Run `sdc1-backup.sh` after primary transfer completes (space permitting)
+- [ ] Run `sdc1-backup.sh` after primary transfer completes — dry run passed (exit 0), 4.53T total scope, under-10M subset should fit in remaining ~0.7T headroom
 - [ ] Consider RAID0 → redundant array — zero fault tolerance on 4.7T archive
 - [ ] Consider merging sdc1 `files/files/` into RAID0 monolithic archive
 - [ ] Decide fate of Telegram downloads on sdc1 (12G, 458 videos, 264 PDFs)
