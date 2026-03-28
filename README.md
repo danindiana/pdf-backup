@@ -157,14 +157,27 @@ tightened — sdg is the most likely failure point on this array.
 ### sdc1
 5.5T ext4 on same physical disk as RAID member sdc2. Investigated 2026-03-27:
 - 4.4T used / 918G free (83% full), fsck clean
-- `files/` (4.2T) is the dominant unknown; rest is ML models, LLM WebUI, media, CAD, text archives
-- Only 918G free — not viable for PDF overflow without clearing `files/`
-- Leave as-is; revisit if `files/` contents can be moved or deleted
+- **`files/files/` (4.2T) is a second PDF archive** — 1,458,742 PDFs across 87 domain-named
+  directories (NSA, NASA, neuroips, raytheon, Stanford, etc.) — web-scraped, domain-organized
+- `Telegram Desktopv2/` (12G) — 264 PDFs + 458 videos, personal Telegram downloads
+- Remaining dirs: ML models, LLM WebUI, CAD, text archives, media
+
+**Combined PDF inventory across worlock: ~3.96M files, ~8.9T**
+
+| Location | Files | Size |
+|----------|-------|------|
+| `/mnt/raid0/monolithic_pdf_folder` | 2,498,939 | 4.7T |
+| `/dev/sdc1 files/files/` | 1,458,742 | 4.2T |
+
+sdc1 has only 918G free — cannot back itself up. A 6TB+ drive is needed to replicate
+the second archive. Consider eventually merging `files/files/` into the main RAID0 archive.
 
 ## Open items
 
 - [ ] Monitor initial transfer to completion; run `verify.sh` when done
 - [ ] Set up systemd timer for periodic re-sync as new PDFs land on RAID0
-- [ ] Acquire 6TB+ drive to capture excluded large files (>10M, ~100K files)
+- [ ] Acquire 6TB+ drive — needed for both excluded large files (>10M) AND sdc1 `files/files/` backup
 - [ ] **Urgent:** Investigate sdg thermals — airflow, drive placement, possible replacement
 - [ ] Consider RAID0 → redundant array — zero fault tolerance on 4.7T archive
+- [ ] Consider merging sdc1 `files/files/` (1.46M PDFs, 4.2T) into RAID0 monolithic archive
+- [ ] Decide fate of Telegram downloads on sdc1 (12G, 458 videos, 264 PDFs)
