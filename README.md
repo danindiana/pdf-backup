@@ -135,11 +135,35 @@ done
 - **Kernel note:** Running 6.8.12 (custom, `CONFIG_XFS_FS` not set). ext4 used.
   Stock Ubuntu kernels (6.8.0-106-generic) have XFS available if needed.
 
+## Supporting infrastructure
+
+### logrotate
+`/etc/logrotate.d/pdf-backup` — rotates at 500M, 4 compressed generations, `copytruncate`
+(safe to rotate while rsync is writing). Prevents `/var/log` filling during a 2.4M-file run.
+
+### smartd
+`smartmontools.service` enabled and running. `/etc/smartd.conf` monitors all drives with
+temperature alerting (`-W DIFF,INFO,CRIT`) and scheduled self-tests:
+
+| Drive | Role | Temp alerts | Note |
+|-------|------|-------------|------|
+| sda (WDC WD4005FZBX) | pdf_backup | 4°/45°/52° | Short daily 2am, long Sat 3am |
+| sdc (IronWolf ZL2PLEG9) | RAID0 | 4°/44°/50° | Short daily 2am, long Sat 3am |
+| sdg (IronWolf ZLW2HXSN) | RAID0 | 3°/43°/48° | **⚠ attr 190 hit threshold (max 47°C)** |
+
+**sdg warning:** Airflow_Temperature hit its manufacturer threshold in the past. Alerting
+tightened — sdg is the most likely failure point on this array.
+
+### sdc1
+5.5T ext4 on same physical disk as RAID member sdc2. Investigated 2026-03-27:
+- 4.4T used / 918G free, fsck clean
+- Contains ML models, media, CAD files, PDF crawl zips — not available for PDF overflow
+- Leave as-is until space is freed
+
 ## Open items
 
 - [ ] Monitor initial transfer to completion; run `verify.sh` when done
-- [ ] Investigate `sdc1` (5.5T unmounted ext4) — potential home for excluded large files (>10M)
-- [ ] Set up systemd timer for periodic re-sync as new PDFs are ingested into RAID0
-- [ ] Consider larger drive (6TB+) to eventually capture the full 4.7T archive
-- [ ] Consider RAID0 → redundant array migration (RAID1/5) — archive has zero fault tolerance
-- [ ] Set up `smartd` alerts for sda and RAID member drives
+- [ ] Set up systemd timer for periodic re-sync as new PDFs land on RAID0
+- [ ] Acquire 6TB+ drive to capture excluded large files (>10M, ~100K files)
+- [ ] **Urgent:** Investigate sdg thermals — airflow, drive placement, possible replacement
+- [ ] Consider RAID0 → redundant array — zero fault tolerance on 4.7T archive
